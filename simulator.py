@@ -29,6 +29,9 @@ class Intersection:
 
 class TrafficSimulator:
     def __init__(self, intersection_list, main_prop, side_prop, main_reward_power=2, side_reward_power=1):
+        # track if the simulator is dropping cars because lines are filling up
+        self.num_missed_cars = 0
+        self.timestep = 0
         self.max_queue_size = 10
         self.intersections = intersection_list
         self.main_prop = main_prop
@@ -66,6 +69,7 @@ class TrafficSimulator:
 
 
     def step(self, action):
+        self.timestep += 1
         n = len(self.intersections)
         self.light_phases = list(action)
         down = [0] * n  # car moving from i to i+1
@@ -94,11 +98,15 @@ class TrafficSimulator:
             if car == 1 and i < n-1:
                 if self.intersections[i+1].intersection_queues[0].qsize() < self.max_queue_size:
                     self.intersections[i+1].intersection_queues[0].put(1)
+                else:
+                    self.num_missed_cars += 1
 
         for i, car in enumerate(up):
             if car == 1 and i > 0:
                 if self.intersections[i-1].intersection_queues[2].qsize() < self.max_queue_size:
                     self.intersections[i-1].intersection_queues[2].put(1)
+                else:
+                    self.num_missed_cars += 1
         
         # 3) spawn new arrivals
         for intersection in self.intersections:
@@ -109,16 +117,22 @@ class TrafficSimulator:
                     if np.random.rand() < self.main_prop:
                         if intersection.intersection_queues[d].qsize() < self.max_queue_size:
                             intersection.intersection_queues[d].put(1)
+                        else:
+                            self.num_missed_cars += 1
                 elif d == 2 and iid == len(self.intersections)-1:
                     # main entry bottom
                     if np.random.rand() < self.main_prop:
                         if intersection.intersection_queues[d].qsize() < self.max_queue_size:
                             intersection.intersection_queues[d].put(1)
+                        else:
+                            self.num_missed_cars += 1
                 else:
                     # side roads
                     if np.random.rand() < self.side_prop:
                         if intersection.intersection_queues[d].qsize() < self.max_queue_size:
                             intersection.intersection_queues[d].put(1)
+                        else:
+                            self.num_missed_cars += 1
 
         self.state = self.getState()
         reward = self.calculate_reward()
