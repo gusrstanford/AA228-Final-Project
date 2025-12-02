@@ -1,5 +1,6 @@
 import numpy as np
 from queue import Queue
+import matplotlib.pyplot as plt
 
 class Intersection:
     def __init__(self, intersection_id):
@@ -32,7 +33,7 @@ class TrafficSimulator:
         # track if the simulator is dropping cars because lines are filling up
         self.num_missed_cars = 0
         self.timestep = 0
-        self.max_queue_size = 10
+        self.max_queue_size = 7
         self.intersections = intersection_list
         self.main_prop = main_prop
         self.side_prop = side_prop
@@ -49,6 +50,8 @@ class TrafficSimulator:
         return np.array(state, dtype=int)
 
     def reset(self):
+        self.num_missed_cars = 0
+        self.timestep = 0
         for intersection in self.intersections:
             intersection.reset_queues()
             intersection.set_phase(0)
@@ -112,6 +115,7 @@ class TrafficSimulator:
         for intersection in self.intersections:
             iid = intersection.get_ID()
             for d in range(4):
+                # only spawns cars from the top of the main road
                 if d == 0 and iid == 0:
                     # main entry top
                     if np.random.rand() < self.main_prop:
@@ -119,6 +123,7 @@ class TrafficSimulator:
                             intersection.intersection_queues[d].put(1)
                         else:
                             self.num_missed_cars += 1
+                # only spawns cars from the bottom of the main road
                 elif d == 2 and iid == len(self.intersections)-1:
                     # main entry bottom
                     if np.random.rand() < self.main_prop:
@@ -126,8 +131,8 @@ class TrafficSimulator:
                             intersection.intersection_queues[d].put(1)
                         else:
                             self.num_missed_cars += 1
-                else:
-                    # side roads
+                elif d in [1, 3]:
+                    # spawns cars on all the side roads
                     if np.random.rand() < self.side_prop:
                         if intersection.intersection_queues[d].qsize() < self.max_queue_size:
                             intersection.intersection_queues[d].put(1)
@@ -138,15 +143,84 @@ class TrafficSimulator:
         reward = self.calculate_reward()
         return self.state, reward
 
+def draw_state(state, light_phases):
+    """
+    Visualize a traffic state as a vertical corridor of intersections.
+
+    - state is the flat numpy array returned by env.getState():
+      [q0_up, q0_left, q0_down, q0_right, phase0,
+       q1_up, q1_left, q1_down, q1_right, phase1, ...]
+    - light_phases is a list/array of 0/1 for each intersection:
+      0 = vertical green (main up/down), 1 = horizontal green (side left/right)
+    """
+
+    state = np.asarray(state, dtype=int)
+    num_intersections = len(light_phases)
+
+    # Each intersection contributes 5 entries: 4 queues + phase
+    expected_len = num_intersections * 5
+    if len(state) < expected_len:
+        raise ValueError(
+            f"State length {len(state)} is too short for {num_intersections} intersections "
+            f"(expected at least {expected_len})."
+        )
+
+    fig, ax = plt.subplots(figsize=(4, 6))
+
+    # Draw the main vertical road line (x=0)
+    ax.plot([0, 0], [0, num_intersections - 1], linewidth=2)
+
+    # For nicer plotting, put intersection 0 at the top
+    for idx in range(num_intersections):
+        # extract queues for this intersection
+        base = idx * 5
+        up_q, left_q, down_q, right_q, phase_in_state = state[base: base + 5]
+
+        # y-position: flip so 0 is at top
+        y = (num_intersections - 1) - idx
+
+        # Draw light: green if vertical is green, red otherwise
+        light_phase = light_phases[idx]
+        color = "green" if light_phase == 0 else "red"
+        light_circle = plt.Circle((0, y), 0.15, color=color)
+        ax.add_patch(light_circle)
+
+        # MAIN ROAD queues (up/down) drawn vertically:
+        #   up_q above the light, down_q below the light
+        for j in range(up_q):
+            ax.plot(-0.1, y + 0.3 * (j + 1), "ko", markersize=4)
+        for j in range(down_q):
+            ax.plot(0.1, y - 0.3 * (j + 1), "ko", markersize=4)
+
+        # SIDE ROAD queues (left/right) drawn horizontally:
+        #   left_q to the left, right_q to the right
+        for j in range(left_q):
+            ax.plot(-0.3 * (j + 1), y, "ko", markersize=4)
+        for j in range(right_q):
+            ax.plot(0.3 * (j + 1), y, "ko", markersize=4)
+
+    ax.set_ylim(-1, num_intersections)
+    ax.set_xlim(-3, 3)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title("Traffic State")
+
+    plt.tight_layout()
+    plt.show()
+
+
 
 if __name__ == "__main__":
-    intersections = [Intersection(i) for i in range(3)]
-    sim = TrafficSimulator(intersections, main_prop=0.3, side_prop=0.1)
-    state = sim.reset()
-    print("Initial State:", state)
-    for _ in range(10):
-        action = [np.random.choice([0,1]) for _ in range(3)]
-        next_state, reward = sim.step(action)
-        print("Action:", action)
-        print("Next State:", next_state)
-        print("Reward:", reward)
+    intersections = [Intersection(i) for i in range(4)]
+    env = TrafficSimulator(intersections, main_prop=0.5, side_prop=0.1)
+
+    state = env.reset()
+    draw_state(state, env.light_phases)
+
+    for _ in range(5):
+        action = [np.random.choice([0, 1]) for _ in range(4)]
+        state, reward = env.step(action)
+        print("Action:", action, "Reward:", reward)
+        draw_state(state, env.light_phases)
+
