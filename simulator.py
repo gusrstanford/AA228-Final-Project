@@ -29,14 +29,14 @@ class Intersection:
 
 
 class TrafficSimulator:
-    def __init__(self, intersection_list, main_prop, side_prop, main_reward_power=2, side_reward_power=1):
+    def __init__(self, intersection_list, main_prob, side_prob, main_reward_power=2, side_reward_power=1, max_queue_size=8):
         # track if the simulator is dropping cars because lines are filling up
         self.num_missed_cars = 0
         self.timestep = 0
-        self.max_queue_size = 7
+        self.max_queue_size = max_queue_size
         self.intersections = intersection_list
-        self.main_prop = main_prop
-        self.side_prop = side_prop
+        self.main_prob = main_prob
+        self.side_prob = side_prob
         self.main_reward_power = main_reward_power
         self.side_reward_power = side_reward_power
         self.light_phases = [0] * len(self.intersections)
@@ -118,7 +118,7 @@ class TrafficSimulator:
                 # only spawns cars from the top of the main road
                 if d == 0 and iid == 0:
                     # main entry top
-                    if np.random.rand() < self.main_prop:
+                    if np.random.rand() < self.main_prob:
                         if intersection.intersection_queues[d].qsize() < self.max_queue_size:
                             intersection.intersection_queues[d].put(1)
                         else:
@@ -126,14 +126,14 @@ class TrafficSimulator:
                 # only spawns cars from the bottom of the main road
                 elif d == 2 and iid == len(self.intersections)-1:
                     # main entry bottom
-                    if np.random.rand() < self.main_prop:
+                    if np.random.rand() < self.main_prob:
                         if intersection.intersection_queues[d].qsize() < self.max_queue_size:
                             intersection.intersection_queues[d].put(1)
                         else:
                             self.num_missed_cars += 1
                 elif d in [1, 3]:
                     # spawns cars on all the side roads
-                    if np.random.rand() < self.side_prop:
+                    if np.random.rand() < self.side_prob:
                         if intersection.intersection_queues[d].qsize() < self.max_queue_size:
                             intersection.intersection_queues[d].put(1)
                         else:
@@ -142,6 +142,8 @@ class TrafficSimulator:
         self.state = self.getState()
         reward = self.calculate_reward()
         return self.state, reward
+    
+
 
 def draw_state(state, light_phases):
     """
@@ -168,7 +170,7 @@ def draw_state(state, light_phases):
     fig, ax = plt.subplots(figsize=(4, 6))
 
     # Draw the main vertical road line (x=0)
-    ax.plot([0, 0], [0, num_intersections - 1], linewidth=2)
+    ax.plot([0, 0], [0, num_intersections - 1], linewidth=2, zorder=0)
 
     # For nicer plotting, put intersection 0 at the top
     for idx in range(num_intersections):
@@ -179,11 +181,28 @@ def draw_state(state, light_phases):
         # y-position: flip so 0 is at top
         y = (num_intersections - 1) - idx
 
-        # Draw light: green if vertical is green, red otherwise
+        # Draw light as 4 small circles in a square:
+        # vertical (up/down) = main road, horizontal (left/right) = side road
         light_phase = light_phases[idx]
-        color = "green" if light_phase == 0 else "red"
-        light_circle = plt.Circle((0, y), 0.15, color=color)
-        ax.add_patch(light_circle)
+        color_vert = "green" if light_phase == 0 else "red"
+        color_horiz = "red" if light_phase == 0 else "green"
+
+        r = 0.07   # radius of each little light
+        d = 0.13   # distance from center
+
+        # top / bottom = vertical directions (0,2)
+        top_circle    = plt.Circle((0,    y + d), r, color=color_vert)
+        bottom_circle = plt.Circle((0,    y - d), r, color=color_vert)
+        # left / right = horizontal directions (1,3)
+        left_circle   = plt.Circle((-d,   y),     r, color=color_horiz)
+        right_circle  = plt.Circle(( d,   y),     r, color=color_horiz)
+
+        ax.add_patch(top_circle)
+        ax.add_patch(bottom_circle)
+        ax.add_patch(left_circle)
+        ax.add_patch(right_circle)
+
+
 
         # MAIN ROAD queues (up/down) drawn vertically:
         #   up_q above the light, down_q below the light
@@ -213,7 +232,7 @@ def draw_state(state, light_phases):
 
 if __name__ == "__main__":
     intersections = [Intersection(i) for i in range(4)]
-    env = TrafficSimulator(intersections, main_prop=0.5, side_prop=0.1)
+    env = TrafficSimulator(intersections, main_prob=0.5, side_prob=0.1)
 
     state = env.reset()
     draw_state(state, env.light_phases)
