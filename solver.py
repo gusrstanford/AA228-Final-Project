@@ -272,30 +272,52 @@ if __name__ == "__main__":
 
     all_results = []
 
-    for name, traffic in [("heavy", heavy_traffic),
-                          ("uniform", uniform_traffic),
-                          ("light", light_traffic)]:
-        if name != "uniform":
-            continue
+    heavy_traffic_sim = sim.TrafficSimulator(
+        [sim.Intersection(i) for i in range(4)],
+        heavy_traffic[0],
+        heavy_traffic[1],
+        main_reward_power=2,
+        side_reward_power=1,
+        max_queue_size=8
+    )
 
-        num_list, rl_rewards, baseline_rewards, results = run_sim_on_multiple_intersections(
-            traffic,
-            max_intersections=6,
-            num_episodes=6000,
-            episode_length=300,
-            alpha=0.1,
-            gamma=0.95,
-            epsilon=0.3,
-            baseline_freq=5
-        )
+    heavy_traffic_q_learning_results = q_learning(
+        heavy_traffic_sim,
+        num_episodes=6000,
+        episode_length=300,
+        alpha=0.1,
+        gamma=0.95,
+        epsilon=0.3
+    )
+    baseline_policy_func = baseline_policy(heavy_traffic_sim, freq=5)
+    greedy_policy_func = greedy_policy(heavy_traffic_q_learning_results[0], heavy_traffic_sim)
+    visualize_policy(heavy_traffic_sim, greedy_policy_func, steps=20, title="Greedy Policy on Heavy Traffic")
+    
 
-        plot_comparison_rewards(
-            num_list,
-            rl_rewards,
-            baseline_rewards,
-            title=f"Reward vs # Intersections ({name} traffic)"
-        )
+    # for name, traffic in [("heavy", heavy_traffic),
+    #                       ("uniform", uniform_traffic),
+    #                       ("light", light_traffic)]:
+    #     if name != "uniform":
+    #         continue
 
-        all_results.extend(results)
+    #     num_list, rl_rewards, baseline_rewards, results = run_sim_on_multiple_intersections(
+    #         traffic,
+    #         max_intersections=6,
+    #         num_episodes=6000,
+    #         episode_length=300,
+    #         alpha=0.1,
+    #         gamma=0.95,
+    #         epsilon=0.3,
+    #         baseline_freq=5
+    #     )
 
-    save_results_to_csv(all_results, "traffic_rl_vs_baseline_results.csv")
+    #     plot_comparison_rewards(
+    #         num_list,
+    #         rl_rewards,
+    #         baseline_rewards,
+    #         title=f"Reward vs # Intersections ({name} traffic)"
+    #     )
+
+    #     all_results.extend(results)
+
+    # save_results_to_csv(all_results, "traffic_rl_vs_baseline_results.csv")
